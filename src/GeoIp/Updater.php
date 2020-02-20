@@ -4,13 +4,13 @@ namespace PragmaRX\Support\GeoIp;
 
 class Updater
 {
-    const GEOLITE2_URL_BASE = 'http://geolite.maxmind.com/download/geoip/database/GeoLite2-City';
+    const GEOLITE2_URL_BASE = 'https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City';
 
     protected $databaseFileGzipped;
 
     protected $databaseFile;
 
-    protected $md5File;
+    protected $sha256File;
 
     protected $messages = [];
 
@@ -24,17 +24,17 @@ class Updater
         $this->messages[] = $string;
     }
 
-    protected function databaseIsUpdated($geoDbFileUrl, $geoDbMd5Url, $destinationPath)
+    protected function databaseIsUpdated($geoDbFileUrl, $geoDbSha256Url)
     {
-        $destinationGeoDbFile = $this->removeGzipExtension($destinationPath . DIRECTORY_SEPARATOR . basename($geoDbFileUrl));
+        $destinationGeoDbFile = $this->destinationPath . $this->getFileName($geoDbFileUrl);
 
-        $this->md5File = $this->getHTTPFile($geoDbMd5Url, $destinationPath . DIRECTORY_SEPARATOR);
+        $this->sha256File = $this->getHTTPFile($geoDbSha256Url);
 
         if (! file_exists($destinationGeoDbFile)) {
             return false;
         }
 
-        if ($updated = file_get_contents($this->md5File) == md5_file($destinationGeoDbFile)) {
+        if ($updated = file_get_contents($this->sha256File) == hash_file('sha256', $destinationGeoDbFile)) {
             $this->addMessage('Database is already updated.');
         }
 
@@ -42,33 +42,45 @@ class Updater
     }
 
     /**
-     * Download gzipped database, unzip and check md5.
+     * Download gzipped database, unzip and check sha256.
      *
-     * @param $destinationPath
      * @param $geoDbUrl
      * @return bool
      */
-    protected function downloadGzipped($destinationPath, $geoDbUrl)
+    protected function downloadGzipped($geoDbUrl)
     {
-        if (! $this->databaseFileGzipped = $this->getHTTPFile($geoDbUrl, ($destination = $destinationPath . DIRECTORY_SEPARATOR))) {
-            $this->addMessage("Unable to download file {$geoDbUrl} to {$destination}.");
+        if (! $this->databaseFileGzipped = $this->getHTTPFile($geoDbUrl)) {
+            $this->addMessage("Unable to download file {$geoDbUrl} to {$this->destinationPath}.");
 
             return false;
         }
 
-        $this->databaseFile = $this->dezipGzFile($destinationPath . DIRECTORY_SEPARATOR . basename($geoDbUrl));
+        $this->databaseFile = $this->destinationPath . $this->getFileName($geoDbUrl);
 
-        return $this->md5Match();
+        if (! $this->sha256Match()) {
+            return false;
+        }
+
+        return $this->dezipGzFile($this->databaseFileGzipped);
     }
 
-    private function getDbFileName($geoDbUrl)
+    private function getDbFileName($geoDbUrl, $license_key)
     {
-        return $geoDbUrl ?: static::GEOLITE2_URL_BASE . '.mmdb.gz';
+        $url = $geoDbUrl ?: static::GEOLITE2_URL_BASE . '&suffix=tar.gz';
+
+        return $this->addLicenseKey($url, $license_key);
     }
 
-    private function getMd5FileName($geoDbMd5Url)
+    private function getSha256FileName($geoDbSha256Url, $license_key)
     {
-        return $geoDbMd5Url ?: static::GEOLITE2_URL_BASE . '.md5';
+        $url = $geoDbSha256Url ?: static::GEOLITE2_URL_BASE . '&suffix=tar.gz.sha256';
+
+        return $this->addLicenseKey($url, $license_key);
+    }
+
+    private function addLicenseKey($url, $license_key)
+    {
+        return $url . '&license_key=' . $license_key;
     }
 
     /**
@@ -93,32 +105,48 @@ class Updater
     }
 
     /**
-     * Compare MD5s.
+     * Compare SHA256s.
      *
      * @return bool
      */
-    private function md5Match()
+    private function sha256Match()
     {
-        if (! $match = md5_file($this->databaseFile) == file_get_contents($this->md5File)) {
-            $this->addMessage("MD5 is not matching for {$this->databaseFile} and {$this->md5File}.");
+        $hash = explode('  ', file_get_contents($this->sha256File))[0];
+
+        if (! $match = hash_file('sha256', $this->databaseFileGzipped) == $hash) {
+            $this->addMessage("SHA256 is not matching for {$this->databaseFileGzipped} and {$this->sha256File}.");
 
             return false;
         }
 
-        $this->addMessage("Database successfully downloaded to {$this->databaseFile}.");
+        $this->addMessage("Database successfully downloaded to {$this->databaseFileGzipped}.");
 
         return true;
     }
 
     /**
-     * Remove .gzip extension from file.
+     * Parse url for get file name.
      *
      * @param $filePath
      * @return mixed
      */
-    protected function removeGzipExtension($filePath)
+    protected function getSourceFileName($filePath)
     {
-        return str_replace('.gz', '', $filePath);
+        $url = parse_url($filePath);
+        parse_str($url['query'], $query);
+
+        return "{$query['edition_id']}.{$query['suffix']}";
+    }
+
+    /**
+     * Remove tar.gz from file name.
+     *
+     * @param $filePath
+     * @return mixed
+     */
+    protected function getFileName($filePath)
+    {
+        return str_replace('tar.gz', 'mmdb', $this->getSourceFileName($filePath));
     }
 
     /**
@@ -126,16 +154,18 @@ class Updater
      *
      * @param $destinationPath
      * @param null $geoDbUrl
-     * @param null $geoDbMd5Url
+     * @param null $geoDbSha256Url
      * @return bool
      */
-    public function updateGeoIpFiles($destinationPath, $geoDbUrl = null, $geoDbMd5Url = null)
+    public function updateGeoIpFiles($destinationPath, $geoDbUrl = null, $geoDbSha256Url = null, $license_key = null)
     {
-        if ($this->databaseIsUpdated($geoDbUrl = $this->getDbFileName($geoDbUrl), $this->getMd5FileName($geoDbMd5Url), $destinationPath)) {
+        $this->destinationPath = $destinationPath . DIRECTORY_SEPARATOR;
+
+        if ($this->databaseIsUpdated($geoDbUrl = $this->getDbFileName($geoDbUrl, $license_key), $this->getSha256FileName($geoDbSha256Url, $license_key))) {
             return true;
         }
 
-        if ($this->downloadGzipped($destinationPath, $geoDbUrl)) {
+        if ($this->downloadGzipped($geoDbUrl)) {
             return true;
         }
 
@@ -148,18 +178,17 @@ class Updater
      * Read url to file.
      *
      * @param $uri
-     * @param $destinationPath
      * @return bool|string
      */
-    protected function getHTTPFile($uri, $destinationPath)
+    protected function getHTTPFile($uri)
     {
         set_time_limit(360);
 
-        if (! $this->makeDir($destinationPath)) {
+        if (! $this->makeDir($this->destinationPath)) {
             return false;
         }
 
-        $fileWriteName = $destinationPath . basename($uri);
+        $fileWriteName = $this->destinationPath . $this->getSourceFileName($uri);
 
         if (($fileRead = @fopen($uri,"rb")) === false || ($fileWrite = @fopen($fileWriteName, 'wb')) === false) {
             $this->addMessage("Unable to open {$uri} (read) or {$fileWriteName} (write).");
@@ -188,41 +217,50 @@ class Updater
     }
 
     /**
-     * Extract gzip file.
+     * Extract tar.gz file.
      *
      * @param $filePath
      * @return bool|mixed
      */
     protected function dezipGzFile($filePath)
     {
-        $buffer_size = 8192; // read 8kb at a time
-
-        $out_file_name = $this->removeGzipExtension($filePath);
-
-        $fileRead = gzopen($filePath, 'rb');
-
-        $fileWrite = fopen($out_file_name, 'wb');
-
-        if ($fileRead === false || $fileWrite === false) {
-            $this->addMessage("Unable to extract gzip file {$filePath} to {$out_file_name}.");
+        try {
+            $p = new \PharData($filePath);
+            $p->decompress();
+        } catch (\Exception $e) {
+            $this->addMessage("Unable to decompress tar.gz file {$filePath}.");
 
             return false;
         }
 
-        while(!gzeof($fileRead)) {
-            $success = fwrite($fileWrite, gzread($fileRead, $buffer_size));
+        $tar = str_replace('.gz', '', $filePath);
 
-            if ($success === false) {
-                $this->addMessage("Error degzipping file {$filePath} to {$out_file_name}.");
+        try {
+            $p = new \PharData($tar);
+            $p->extractTo($this->destinationPath, null, true);
 
-                return false;
-            }
+            $dirs = \File::directories($this->destinationPath);
+        } catch (\Exception $e) {
+            $this->addMessage("Unable to extract tar file {$filePath} to {$this->destinationPath}.");
+
+            return false;
         }
 
-        // Files are done, close files
-        fclose($fileWrite);
+        @unlink($tar);
 
-        gzclose($fileRead);
+        $out_file_name = basename($this->databaseFile);
+
+        try {
+            $from = $dirs[0] . DIRECTORY_SEPARATOR . basename($this->databaseFile);
+            $to = $this->destinationPath . DIRECTORY_SEPARATOR . $out_file_name;
+
+            copy($from, $to);
+            \File::deleteDirectory($dirs[0]);
+        } catch (\Exception $e) {
+            $this->addMessage("Unable to copy mmdb file {$from} to {$to}.");
+
+            return false;
+        }
 
         return $out_file_name;
     }
