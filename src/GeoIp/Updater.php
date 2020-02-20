@@ -52,6 +52,8 @@ class Updater
     {
         if (! $this->databaseFileGzipped = $this->getHTTPFile($geoDbUrl, ($destination = $destinationPath . DIRECTORY_SEPARATOR))) {
             $this->addMessage("Unable to download file {$geoDbUrl} to {$destination}.");
+
+            return false;
         }
 
         $this->databaseFile = $this->dezipGzFile($destinationPath . DIRECTORY_SEPARATOR . basename($geoDbUrl));
