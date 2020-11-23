@@ -46,7 +46,7 @@ class GeoIp2 extends GeoIpAbstract implements GeoIpContract
             'country_code' => $this->geoIpData->country->isoCode,
             'country_code3' => null,
             'country_name' => $this->geoIpData->country->name,
-            'region' => $this->geoIpData->continent->code,
+            'region' => $this->getState(),
             'city' => $this->geoIpData->city->name,
             'postal_code' => $this->geoIpData->postal->code,
             'area_code' => null,
@@ -71,5 +71,15 @@ class GeoIp2 extends GeoIpAbstract implements GeoIpContract
         }
 
         return $city;
+    }
+
+    private function getState()
+    {
+        $subdivisions = $this->geoIpData->subdivisions;
+
+        if (isset($subdivisions[0]))
+        {
+            return (in_array($this->geoIpData->country->isoCode, ['BR', 'US'])) ? $subdivisions[0]->isoCode : $subdivisions[0]->name;
+        }
     }
 }
