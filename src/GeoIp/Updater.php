@@ -246,7 +246,7 @@ class Updater
             return false;
         }
 
-        @unlink($tar);
+        @array_map('unlink', glob("$tar*"));
 
         $out_file_name = basename($this->databaseFile);
 
