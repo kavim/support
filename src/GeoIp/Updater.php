@@ -226,28 +226,14 @@ class Updater
     {
         try {
             $p = new \PharData($filePath);
-            $p->decompress();
-        } catch (\Exception $e) {
-            $this->addMessage("Unable to decompress tar.gz file {$filePath}.");
-
-            return false;
-        }
-
-        $tar = str_replace('.gz', '', $filePath);
-
-        try {
-            $p = new \PharData($tar);
             $p->extractTo($this->destinationPath, null, true);
-
-            $dirs = \File::directories($this->destinationPath);
         } catch (\Exception $e) {
             $this->addMessage("Unable to extract tar file {$filePath} to {$this->destinationPath}.");
 
             return false;
         }
 
-        @array_map('unlink', glob("$tar*"));
-
+        $dirs = \File::directories($this->destinationPath);
         $out_file_name = basename($this->databaseFile);
 
         try {
@@ -261,6 +247,9 @@ class Updater
 
             return false;
         }
+
+        $tar = str_replace('.gz', '', $filePath);
+        @array_map('unlink', glob("$tar*"));
 
         return $out_file_name;
     }
