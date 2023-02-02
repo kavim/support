@@ -14,10 +14,12 @@ class Updater
 
     protected $messages = [];
 
+    protected $destinationPath;
+
     /**
      * Add a message.
      *
-     * @param $string
+     * @param string $string
      */
     private function addMessage($string)
     {
@@ -96,7 +98,7 @@ class Updater
     /**
      * Make directory.
      *
-     * @param $destinationPath
+     * @param string $destinationPath
      * @return bool
      */
     protected function makeDir($destinationPath)
@@ -152,7 +154,7 @@ class Updater
     /**
      * Download and update GeoIp database.
      *
-     * @param $destinationPath
+     * @param string $destinationPath
      * @param null $geoDbUrl
      * @param null $geoDbSha256Url
      * @return bool
@@ -190,15 +192,14 @@ class Updater
 
         $fileWriteName = $this->destinationPath . $this->getSourceFileName($uri);
 
-        if (($fileRead = @fopen($uri,"rb")) === false || ($fileWrite = @fopen($fileWriteName, 'wb')) === false) {
+        if (($fileRead = @fopen($uri, 'rb')) === false || ($fileWrite = @fopen($fileWriteName, 'wb')) === false) {
             $this->addMessage("Unable to open {$uri} (read) or {$fileWriteName} (write).");
 
             return false;
         }
 
-        while(! feof($fileRead))
-        {
-            $content = @fread($fileRead, 1024*16);
+        while (! feof($fileRead)) {
+            $content = @fread($fileRead, 1024 * 16);
 
             $success = fwrite($fileWrite, $content);
 
@@ -227,7 +228,7 @@ class Updater
         try {
             $p = new \PharData($filePath);
             $p->extractTo($this->destinationPath, null, true);
-        } catch (\Exception $e) {
+        } catch (\Exception$e) {
             $this->addMessage("Unable to extract tar file {$filePath} to {$this->destinationPath}.");
 
             return false;
@@ -242,7 +243,7 @@ class Updater
 
             copy($from, $to);
             \File::deleteDirectory($dirs[0]);
-        } catch (\Exception $e) {
+        } catch (\Exception$e) {
             $this->addMessage("Unable to copy mmdb file {$from} to {$to}.");
 
             return false;
