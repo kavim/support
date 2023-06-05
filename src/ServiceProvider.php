@@ -23,6 +23,10 @@ abstract class ServiceProvider extends IlluminateServiceProvider
 
 	protected $registered = false;
 
+	protected $packageVendor;
+	protected $packageNamespace;
+	protected $packageName;
+
 	/**
 	 * Get the ServiceProvider root directory
 	 *
